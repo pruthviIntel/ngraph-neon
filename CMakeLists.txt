@@ -28,20 +28,38 @@ include(ExternalProject)
 ExternalProject_Add(
     aeon
     GIT_REPOSITORY "https://github.com/NervanaSystems/aeon.git"
-    GIT_TAG "v1.2.0"
+    GIT_TAG "v1.3.1"
     LOG_CONFIGURE 1
     BUILD_COMMAND ""
     LOG INSTALL 1
     INSTALL_COMMAND pip install -U .
     )
 
+
+set(NGRAPH_CMAKE_ARGS "")
+
+if(DEFINED NGRAPH_GPU_ENABLE)
+    set(NGRAPH_CMAKE_ARGS "-DNGRAPH_GPU_ENABLE=TRUE" ${NGRAPH_CMAKE_ARGS})
+endif()
+if(DEFINED NGRAPH_USE_PREBUILT_LLVM)
+    set(NGRAPH_CMAKE_ARGS "-DNGRAPH_USE_PREBUILT_LLVM=TRUE" ${NGRAPH_CMAKE_ARGS})
+endif()
+
+set(MAKE_PARALLEL_ARGS "-j")
+
+if(DEFINED NUM_THREADS)
+    set(MAKE_PARALLEL_ARGS ${MAKE_PARALLEL_ARGS} ${NUM_THREADS})
+else()
+    set(MAKE_PARALLEL_ARGS ${MAKE_PARALLEL_ARGS} "8")
+endif()
+
 ExternalProject_Add(
     pyngraph
     GIT_REPOSITORY "https://github.com/NervanaSystems/ngraph.git"
-    GIT_TAG "v0.1.0"
-    CONFIGURE_COMMAND cmake ../pyngraph/python
+    GIT_TAG "silee2/neon_cmake"
+    CONFIGURE_COMMAND cmake ${NGRAPH_CMAKE_ARGS} ../pyngraph/python
     LOG_CONFIGURE 1
-    BUILD_COMMAND make pybind11 ngraph
+    BUILD_COMMAND make ${MAKE_PARALLEL_ARGS}
     LOG_BUILD 1
     LOG INSTALL 1
     INSTALL_COMMAND pip install -U .
