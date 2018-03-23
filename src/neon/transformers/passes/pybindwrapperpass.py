@@ -18,11 +18,11 @@ from __future__ import division
 from neon.transformers.passes.passes import PeepholeGraphPass
 from neon.util.generics import generic_method
 from neon.op_graph.op_graph import Op, Add, AssignableTensorOp, AssignOp, AxesCastOp, \
-    BroadcastOp, ContiguousOp, Divide, DotOp, Equal, ExpandDims, ExpOp, Flatten, Fill, \
-    Greater, GreaterEqual, Less, LessEqual, LogOp, MapRolesOp, Max, Maximum, Minimum, \
-    Multiply, NegativeOp, NotEqual, OneHotOp, ParallelOp, Power, Prod, ReciprocalOp, \
-    ReductionOp, ReorderAxes, SequentialOp, SqrtOp, SquareOp, Subtract, Sum, TanhOp, \
-    TensorSliceOp, TensorSizeOp, TensorValueOp, Unflatten
+    BroadcastOp, ConcatOp, ContiguousOp, Divide, DotOp, Equal, ExpandDims, ExpOp, \
+    Flatten, Fill, Greater, GreaterEqual, Less, LessEqual, LogOp, MapRolesOp, Max, \
+    Maximum, Minimum, Multiply, NegativeOp, NotEqual, OneHotOp, ParallelOp, Power, Prod, \
+    ReciprocalOp, ReductionOp, ReorderAxes, RoleCastOp, SequentialOp, SqrtOp, SquareOp, \
+    Subtract, Sum, TanhOp, TensorSliceOp, TensorSizeOp, TensorValueOp, Unflatten
 from neon.op_graph.batchnorm import BatchnormCommonOp, BatchnormBpropCommonOp, \
     BatchnormOutputOp, BatchnormMeanOp, BatchnormVarOp, \
     BatchnormBpropDataOp, BatchnormBpropGammaOp, BatchnormBpropBetaOp
@@ -31,19 +31,15 @@ from neon.op_graph.pooling import PoolingOp, BpropPoolOp
 from neon.op_graph.convolution import ConvolutionOp, bprop_conv, update_conv
 import numpy as np
 
-from ngraph.impl import AxisSet
-from ngraph.impl import AxisVector
-from ngraph.impl import CoordinateDiff
-from ngraph.impl import Coordinate
-from ngraph.impl import Shape
-from ngraph.impl import Strides
-from ngraph.impl import Type
+from ngraph.impl import AxisSet, AxisVector, CoordinateDiff, Coordinate, NodeVector, Shape, \
+    Strides, Type
+from ngraph.impl.op import Constant, Parameter
 from ngraph.impl.op import AvgPool as PyngAvgPool
 from ngraph.impl.op import AvgPoolBackprop as PyngAvgPoolBackprop
 from ngraph.impl.op import BatchNorm as PyngBatchNorm
 from ngraph.impl.op import BatchNormBackprop as PyngBatchNormBackprop
 from ngraph.impl.op import Broadcast as PyngBroadcast
-from ngraph.impl.op import Constant
+from ngraph.impl.op import Concat as PyngConcat
 from ngraph.impl.op import Convert as PyngConvert
 from ngraph.impl.op import Convolution as PyngConvolution
 from ngraph.impl.op import ConvolutionBackpropData as PyngConvolutionBackpropData
@@ -65,7 +61,6 @@ from ngraph.impl.op import Minimum as PyngMinimum
 from ngraph.impl.op import Negative as PyngNegative
 from ngraph.impl.op import NotEqual as PyngNotEqual
 from ngraph.impl.op import OneHot as PyngOneHot
-from ngraph.impl.op import Parameter
 from ngraph.impl.op import Product as PyngProduct
 from ngraph.impl.op import Power as PyngPower
 from ngraph.impl.op import Relu as PyngRelu
@@ -315,6 +310,12 @@ class PybindWrapperGenerator(PeepholeGraphPass):
         op_element_type = self.computation.lookup_cpp_op(x)
         self.computation.register_cpp_op(op, op_element_type, set_name=False)
 
+    @visit.on_type(RoleCastOp)
+    def visit(self, op, x):
+        self.computation.set_op_rank(op)
+        op_element_type = self.computation.lookup_cpp_op(x)
+        self.computation.register_cpp_op(op, op_element_type, set_name=False)
+
     @visit.on_type(BroadcastOp)
     def visit(self, op, x):
         self.computation.set_op_rank(op)
@@ -332,6 +333,14 @@ class PybindWrapperGenerator(PeepholeGraphPass):
         self.computation.register_cpp_op(
             op, PyngBroadcast(op_element_type, Shape(list(op.axes.lengths)),
                               AxisSet(axis_set)))
+
+    @visit.on_type(ConcatOp)
+    def visit(self, op):
+        self.computation.set_op_rank(op)
+        op_element_list = [self.computation.lookup_cpp_op(x) for x in op.x_list]
+        axis = op.x_list[0].axes.index(op.axis_list[0])
+        self.computation.register_cpp_op(
+            op, PyngConcat(NodeVector(op_element_list), axis))
 
     def flatten(self, container):
         if isinstance(container, (list, tuple)):
